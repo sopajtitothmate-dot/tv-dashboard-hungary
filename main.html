@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magyar TV Lista</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Elrendezés: teljes képernyős kép. Bármely gombnyomásra YouTube-szerű vezérlősáv jön fel, a fogaskerékből a csatornalista és a beállítások érhetők el. */
+:root{
+  --ink:#06090e;
+  --panel:#141c29;
+  --panel-2:#1f2b3d;
+  --line:#33445f;
+  --text:#f4f7fb;
+  --mute:#9db0cb;
+  --tally:#ff4a2b;
+  --warn:#f0b429;
+  --font-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --font-body:"Barlow",Arial,Helvetica,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--ink);color:var(--text);font-family:var(--font-body);font-size:20px;overflow:hidden}
+button{font:inherit;color:inherit}
+svg{width:100%;height:100%;fill:currentColor;display:block}
+
+.stage{position:fixed;inset:0;background:#000;cursor:none}
+.stage.show{cursor:default}
+video{width:100%;height:100%;background:#000;display:block;object-fit:contain}
+
+.idle{position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:10px;color:var(--mute);padding:24px}
+.idle b{font-family:var(--font-display);font-size:44px;letter-spacing:.03em;text-transform:uppercase;color:var(--text)}
+
+.toast{position:absolute;left:50%;bottom:170px;transform:translateX(-50%);max-width:min(900px,90vw);background:#000d;border-left:5px solid var(--warn);padding:12px 18px;border-radius:8px;font-size:18px;display:none;z-index:4}
+.toast.on{display:block}
+
+/* felső sáv */
+.top,.bottom{position:absolute;left:0;right:0;opacity:0;pointer-events:none;transition:opacity .25s;z-index:5}
+.show .top,.show .bottom,.peek .top{opacity:1;pointer-events:auto}
+.tophint{margin-left:auto;color:var(--mute);font-size:17px;white-space:nowrap}
+.top{top:0;padding:22px 32px 70px;background:linear-gradient(#000c,#0000);display:flex;align-items:center;gap:16px}
+.chnum{font-family:var(--font-display);font-weight:700;font-size:44px;color:var(--tally);min-width:60px}
+.chname{font-family:var(--font-display);font-weight:600;font-size:40px;letter-spacing:.02em}
+.chsub{font-size:17px;color:var(--mute);margin-left:6px}
+
+/* alsó sáv */
+.bottom{bottom:0;padding:90px 28px 20px;background:linear-gradient(#0000,#000e 55%)}
+.live{height:5px;border-radius:3px;background:var(--tally);margin:0 4px 14px}
+.ctrls{display:flex;align-items:center;gap:6px}
+.cb{width:60px;height:60px;border-radius:50%;border:3px solid transparent;background:transparent;padding:14px;cursor:pointer;position:relative}
+.cb:hover{background:#fff2}
+.cb.focus{border-color:var(--text);background:#fff3}
+.cb.big{width:68px;height:68px;padding:15px}
+.vol{font-size:15px;color:var(--mute);min-width:44px;font-variant-numeric:tabular-nums}
+.badge{display:inline-flex;align-items:center;gap:8px;margin-left:12px;font-weight:600;font-size:17px}
+.badge i{width:11px;height:11px;border-radius:50%;background:var(--tally);display:block}
+.grow{flex:1}
+.dot{position:absolute;top:10px;right:10px;width:12px;height:12px;border-radius:50%;background:var(--warn);display:none}
+.dot.on{display:block}
+
+/* beállítások menü */
+.menu{position:absolute;right:92px;bottom:100px;width:min(440px,90vw);background:#141c29f2;border:1px solid var(--line);border-radius:14px;padding:8px;display:none;z-index:6}
+.menu.on{display:block}
+.mi{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:transparent;border:2px solid transparent;border-radius:10px;padding:13px 14px;cursor:pointer;font-size:20px}
+.mi:hover{background:var(--panel-2)}
+.mi.focus{border-color:var(--text);background:var(--panel-2)}
+.mi .ic{width:28px;height:28px;color:var(--mute)}
+.mi .val{margin-left:auto;color:var(--mute);font-size:17px}
+
+/* csatornalista */
+.drawer{position:absolute;top:0;right:0;bottom:0;width:min(470px,92vw);background:#0f1622f5;border-left:1px solid var(--line);transform:translateX(100%);transition:transform .25s;display:flex;flex-direction:column;z-index:8}
+.drawer.on{transform:none}
+.dh{padding:20px 22px 10px}
+.dh h2{margin:0 0 4px;font-family:var(--font-display);font-size:34px;letter-spacing:.03em;text-transform:uppercase}
+.dh p{margin:0;color:var(--mute);font-size:15px;min-height:22px}
+.dbtns{display:flex;gap:8px;padding:6px 22px 12px}
+.btn{background:var(--panel-2);border:2px solid transparent;border-radius:9px;padding:9px 16px;cursor:pointer;font-weight:600;font-size:17px}
+.btn:hover{border-color:var(--line)}
+.btn.focus{border-color:var(--text)}
+.btn.warn{color:var(--warn)}
+.list{flex:1;overflow-y:auto;margin:0;padding:0 12px 20px;list-style:none}
+.row{display:grid;grid-template-columns:40px 50px 1fr auto;align-items:center;gap:12px;padding:7px 12px;border-radius:10px;border:2px solid transparent;cursor:pointer;min-height:62px}
+.row:hover{background:var(--panel-2)}
+.row.focus{border-color:var(--text);background:var(--panel-2)}
+.row.playing .name{color:var(--tally)}
+.row.grab{border-color:var(--tally);background:#2d1c19}
+.row.missing{opacity:.45}
+.num{font-family:var(--font-display);font-weight:600;font-size:26px;color:var(--mute);text-align:right;font-variant-numeric:tabular-nums}
+.logo{width:50px;height:38px;object-fit:contain;background:#fff1;border-radius:6px}
+.logo.empty{visibility:hidden}
+.name{font-weight:600;line-height:1.15}
+.sub{display:block;font-weight:400;font-size:14px;color:var(--mute)}
+.mv{display:flex;gap:4px}
+.mv button{width:36px;height:36px;border-radius:8px;border:0;background:var(--panel-2);cursor:pointer;font-size:15px}
+.mv button:hover{background:var(--line)}
+.hint{padding:10px 22px;border-top:1px solid var(--line);font-size:14px;color:var(--mute);display:flex;flex-wrap:wrap;gap:4px 16px}
+kbd{background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 7px;font-family:var(--font-body);color:var(--text)}
+
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(720px,92vw);padding:20px}
+dialog::backdrop{background:#000a}
+dialog h2{font-family:var(--font-display);margin:0 0 8px;font-size:28px}
+dialog p{color:var(--mute);margin:0 0 10px;font-size:16px}
+textarea{width:100%;height:200px;background:var(--ink);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:14px/1.4 monospace}
+.row2{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+
+@media (max-width:700px){
+  body{font-size:17px}
+  .chname{font-size:28px}.chnum{font-size:32px}
+  .cb{width:48px;height:48px;padding:10px}.cb.big{width:54px;height:54px}
+  .menu{right:12px}
+}
+@media (prefers-reduced-motion:reduce){.top,.bottom,.drawer{transition:none}}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <video id="vid" playsinline></video>
+  <div class="idle" id="idle"><b>Magyar TV</b><span>Nyomj meg egy gombot a vezérlőkhöz. ◀ ▶ vagy OK indítja az adást, a csatornalista a fogaskerék menüben van.</span></div>
+  <div class="toast" id="msg"></div>
+
+  <div class="top" id="top">
+    <span class="chnum" id="chnum"></span>
+    <span><span class="chname" id="chname">Magyar TV</span><span class="chsub" id="chsub"></span></span>
+    <span class="tophint">◀ ▶ csatornaváltás</span>
+  </div>
+
+  <div class="bottom" id="bottom">
+    <div class="menu" id="menu" role="menu">
+      <button class="mi" id="mList" type="button"><span class="ic" data-i="list"></span>Csatornalista és sorrend</button>
+      <button class="mi" id="mSource" type="button"><span class="ic" data-i="next"></span>Forrás<span class="val" id="mSourceVal"></span></button>
+      <button class="mi" id="mSave" type="button"><span class="ic" data-i="gear"></span>Sorrend mentése<span class="val" id="mSaveVal"></span></button>
+      <button class="mi" id="mData" type="button"><span class="ic" data-i="list"></span>Lista betöltése / import</button>
+    </div>
+    <div class="live"></div>
+    <div class="ctrls" id="ctrls">
+      <button class="cb" id="bPrev" type="button" title="Előző csatorna" data-i="prev"></button>
+      <button class="cb big" id="bPlay" type="button" title="Lejátszás / szünet" data-i="pause"></button>
+      <button class="cb" id="bNext" type="button" title="Következő csatorna" data-i="next"></button>
+      <button class="cb" id="bMute" type="button" title="Hang (▲▼ hangerő)" data-i="volume"></button>
+      <span class="vol" id="vol">100%</span>
+      <span class="badge"><i></i>ÉLŐ</span>
+      <span class="grow"></span>
+      <button class="cb" id="bSet" type="button" title="Beállítások" data-i="gear"><span class="dot" id="dot"></span></button>
+      <button class="cb" id="bFull" type="button" title="Teljes képernyő" data-i="full"></button>
+    </div>
+  </div>
+
+  <aside class="drawer" id="drawer" aria-label="Csatornalista">
+    <div class="dh"><h2>Csatornák</h2><p id="status">Lista betöltése…</p></div>
+    <div class="dbtns">
+      <button class="btn" id="dSave" type="button">Mentés</button>
+      <button class="btn" id="dReset" type="button">Alap sorrend</button>
+      <button class="btn" id="dClose2" type="button">Bezár</button>
+    </div>
+    <ul class="list" id="list"></ul>
+    <div class="hint">
+      <span><kbd>OK</kbd> lejátszás</span>
+      <span><kbd>▶</kbd> mozgatás be/ki</span>
+      <span><kbd>◀</kbd> vissza</span>
+    </div>
+  </aside>
+</div>
+
+<dialog id="dlg">
+  <h2>Lista betöltése és sorrend átvitele</h2>
+  <p>Ha az oldal nem éri el az iptv-org listáját, másold be ide a hu.m3u tartalmát, vagy tölts be fájlt. A sorrend kódja átvihető másik eszközre.</p>
+  <textarea id="ta" spellcheck="false" placeholder="#EXTM3U ..."></textarea>
+  <div class="row2">
+    <button class="btn" id="dM3u" type="button">M3U használata</button>
+    <input type="file" id="dFile" accept=".m3u,.m3u8,.txt" style="color:var(--mute)">
+    <button class="btn" id="dExport" type="button">Sorrend kiírása</button>
+    <button class="btn" id="dImport" type="button">Sorrend betöltése</button>
+    <button class="btn" id="dClose" type="button">Bezár</button>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script>
+(function(){
+"use strict";
+var WANTED=["Arena4","Discovery Channel","Disney Channel","Duna","FEM3","Film4","Film Cafe","Film+","Food Network","Galaxy4","HGTV","History","Izaura TV","JimJam","Jocky TV","Life TV","M1 HD","M2","M4 Sport","M5","Minimax","Mozi+","Moziverzum","National Geographic","National Geographic Wild","Nick Jr.","Nickelodeon","Nicktoons","Ozone TV","Prime","RTL","RTL Gold","RTL Három","RTL Kettő","Sorozat+","Spektrum","Spektrum Home","Story4","Super TV2","The Fishing & Hunting Channel HD","TLC","Travel Channel","TV2","TV2 Comedy","TV2 Kids","TV2 Séf","TV4","Viasat2","Viasat3","Viasat6"];
+var SOURCES=["https://iptv-org.github.io/iptv/countries/hu.m3u","https://iptv-org.github.io/iptv/languages/hun.m3u"];
+var LS_ORDER="magyarTv.order.v1", LS_M3U="magyarTv.m3u.v1", LS_LAST="magyarTv.last.v1", LS_VOL="magyarTv.vol.v1";
+
+var ICON={
+  play:"M8 5v14l11-7z",
+  pause:"M6 19h4V5H6v14zm8-14v14h4V5h-4z",
+  prev:"M6 6h2v12H6zm3.5 6l8.5 6V6z",
+  next:"M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z",
+  volume:"M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z",
+  mute:"M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z",
+  gear:"M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z",
+  full:"M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z",
+  list:"M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"
+};
+function svg(n){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+ICON[n]+'"/></svg>'}
+function setIcon(el,n){
+  var d=el.querySelector("svg");
+  if(d){d.firstChild.setAttribute("d",ICON[n]);return}
+  el.insertAdjacentHTML("afterbegin",svg(n));
+}
+function $(id){return document.getElementById(id)}
+function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+
+/* ---------- lista betöltése és illesztés ---------- */
+function norm(s){
+  return String(s).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase()
+    .replace(/\([^)]*\)|\[[^\]]*\]/g,"").replace(/[^a-z0-9+]/g,"").replace(/(fhd|hd|sd)$/,"");
+}
+function parse(text){
+  var out=[],lines=text.split(/\r?\n/),cur=null,m;
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i].trim();
+    if(l.indexOf("#EXTINF")===0){
+      var nm=l.slice(l.lastIndexOf(",")+1).trim();
+      cur={name:nm,logo:(m=/tvg-logo="([^"]*)"/.exec(l))?m[1]:"",note:""};
+      var tags=nm.match(/\[[^\]]*\]/g);cur.note=(tags||[]).join(" ");
+      var q=/\((\d{3,4}p)\)/.exec(nm);if(q)cur.note=(q[1]+" "+cur.note).trim();
+    }else if(cur&&l&&l.charAt(0)!=="#"){cur.url=l;out.push(cur);cur=null}
+  }
+  return out;
+}
+
+var channels=[], order=[], playingKey=null, srcIdx=0, dirty=false, hls=null;
+
+function buildChannels(entries){
+  var byKey={};
+  entries.forEach(function(e){var k=norm(e.name);(byKey[k]=byKey[k]||[]).push(e)});
+  var keys=Object.keys(byKey);
+  channels=WANTED.map(function(w){
+    var k=norm(w),list=byKey[k];
+    if(!list){var cand=keys.filter(function(x){return x.indexOf(k)===0});if(cand.length===1)list=byKey[cand[0]]}
+    list=list||[];
+    var logo="";list.forEach(function(e){if(!logo&&e.logo)logo=e.logo});
+    return {name:w,key:w,logo:logo,streams:list.map(function(e){return {url:e.url,note:e.note}})};
+  });
+}
+function applyOrder(){
+  var saved=null;try{saved=JSON.parse(store(LS_ORDER)||"null")}catch(e){}
+  var base=WANTED.slice();
+  if(Array.isArray(saved)){
+    var seen={},o=[];
+    saved.forEach(function(n){if(base.indexOf(n)>-1&&!seen[n]){seen[n]=1;o.push(n)}});
+    base.forEach(function(n){if(!seen[n])o.push(n)});
+    base=o;
+  }
+  order=base;
+}
+function chByKey(k){for(var i=0;i<channels.length;i++)if(channels[i].key===k)return channels[i]}
+function status(t){$("status").textContent=t}
+
+/* ---------- lejátszás ---------- */
+var vid=$("vid");
+function stopPlayer(){
+  if(hls){try{hls.destroy()}catch(e){}hls=null}
+  try{vid.pause()}catch(e){}vid.removeAttribute("src");try{vid.load()}catch(e){}
+}
+function showMsg(t){var m=$("msg");m.textContent=t;m.className="toast"+(t?" on":"")}
+function updateInfo(){
+  var c=chByKey(playingKey);
+  $("chnum").textContent=c?(order.indexOf(c.key)+1):"";
+  $("chname").textContent=c?c.name:"Magyar TV";
+  var n=c?c.streams.length:0;
+  $("chsub").textContent=c&&n?("forrás "+(srcIdx%n+1)+"/"+n+(c.streams[srcIdx%n].note?" · "+c.streams[srcIdx%n].note:"")):"";
+  $("mSourceVal").textContent=n?((srcIdx%n+1)+" / "+n):"nincs";
+}
+function play(key,idx){
+  var c=chByKey(key);if(!c)return;
+  playingKey=key;srcIdx=idx||0;$("idle").style.display="none";store(LS_LAST,key);
+  stopPlayer();showMsg("");updateInfo();renderList();
+  if(!c.streams.length){showMsg("Ehhez a csatornához nincs adás az iptv-org listában.");return}
+  var s=c.streams[srcIdx%c.streams.length];
+  if(location.protocol==="https:"&&s.url.indexOf("http:")===0){
+    showMsg("Ez az adás http címen van, az https oldal nem tudja lejátszani. Nyisd meg az oldalt http-n (helyi szerverről), vagy válts forrást.");
+  }
+  if(window.Hls&&Hls.isSupported()){
+    hls=new Hls({enableWorker:true,maxBufferLength:20,maxMaxBufferLength:30,backBufferLength:0});
+    hls.on(Hls.Events.ERROR,function(e,d){
+      if(d.fatal)showMsg("Nem indul az adás ("+(srcIdx%c.streams.length+1)+"/"+c.streams.length+"). Beállítások > Forrás menüben válthatsz.");
+    });
+    hls.loadSource(s.url);hls.attachMedia(vid);
+    hls.on(Hls.Events.MANIFEST_PARSED,function(){var p=vid.play();if(p&&p.catch)p.catch(function(){})});
+  }else{
+    vid.src=s.url;vid.onerror=function(){showMsg("Nem indul az adás. Próbálj másik forrást.")};
+    var p=vid.play();if(p&&p.catch)p.catch(function(){});
+  }
+}
+function startDefault(){
+  var l=order.indexOf(store(LS_LAST))>-1?store(LS_LAST):order[0];
+  play(l);
+}
+function zap(d){
+  if(!order.length)return;
+  if(!playingKey){startDefault();return}
+  var i=order.indexOf(playingKey);if(i<0)i=0;
+  play(order[(i+d+order.length)%order.length]);
+}
+function nextSource(){
+  var c=chByKey(playingKey);
+  if(!c||c.streams.length<2){showMsg("Ehhez a csatornához nincs másik forrás.");setTimeout(function(){showMsg("")},2500);return}
+  play(c.key,srcIdx+1);
+}
+function togglePlay(){if(!playingKey){startDefault();return}if(vid.paused){var p=vid.play();if(p&&p.catch)p.catch(function(){})}else vid.pause()}
+vid.addEventListener("play",function(){setIcon($("bPlay"),"pause")});
+vid.addEventListener("pause",function(){setIcon($("bPlay"),"play")});
+
+var vol=parseFloat(store(LS_VOL));if(!(vol>=0&&vol<=1))vol=1;
+function applyVol(){
+  vid.volume=vol;$("vol").textContent=(vid.muted||vol===0)?"néma":Math.round(vol*100)+"%";
+  setIcon($("bMute"),(vid.muted||vol===0)?"mute":"volume");store(LS_VOL,String(vol));
+}
+function changeVol(d){vid.muted=false;vol=Math.max(0,Math.min(1,Math.round((vol+d)*10)/10));applyVol()}
+function enterFS(){
+  var d=document,el=d.documentElement;
+  if(d.fullscreenElement||d.webkitFullscreenElement)return;
+  try{
+    if(el.requestFullscreen){var p=el.requestFullscreen();if(p&&p.catch)p.catch(function(){})}
+    else if(el.webkitRequestFullscreen){el.webkitRequestFullscreen()}
+  }catch(e){}
+}
+function fullscreen(){
+  var d=document,el=d.documentElement;
+  if(d.fullscreenElement){d.exitFullscreen&&d.exitFullscreen()}
+  else if(el.requestFullscreen){el.requestFullscreen().catch(function(){})}
+  else if(el.webkitRequestFullscreen){el.webkitRequestFullscreen()}
+}
+
+/* ---------- sorrend ---------- */
+var grabbed=-1;
+function setDirty(v){dirty=v;$("dot").className="dot"+(v?" on":"");$("mSaveVal").textContent=v?"nincs mentve":"mentve"}
+function move(i,d){
+  var j=i+d;if(j<0||j>=order.length)return;
+  var t=order[i];order[i]=order[j];order[j]=t;
+  if(grabbed===i)grabbed=j;
+  setDirty(true);renderList(j);updateInfo();
+}
+function save(){store(LS_ORDER,JSON.stringify(order));setDirty(false);status("Sorrend elmentve ("+order.length+" csatorna).")}
+function resetOrder(){order=WANTED.slice();grabbed=-1;setDirty(true);renderList(0);updateInfo();status("Alap sorrend visszaállítva. Mentsd el, ha ez kell.")}
+
+/* ---------- lista kirajzolása ---------- */
+var lastFocusRow=0;
+function renderList(focusRow){
+  var ul=$("list");ul.innerHTML="";
+  order.forEach(function(k,i){
+    var c=chByKey(k),li=document.createElement("li");
+    li.className="row"+(c.key===playingKey?" playing":"")+(grabbed===i?" grab":"")+(c.streams.length?"":" missing");
+    li.dataset.i=i;
+    var n=document.createElement("span");n.className="num";n.textContent=i+1;
+    var img=document.createElement("img");img.className="logo"+(c.logo?"":" empty");img.alt="";img.loading="lazy";
+    if(c.logo){img.src=c.logo;img.onerror=function(){img.className="logo empty"}}
+    var nm=document.createElement("span");nm.className="name";nm.textContent=c.name;
+    var sub=document.createElement("span");sub.className="sub";
+    sub.textContent=c.key===playingKey?"most megy":(c.streams.length?(c.streams.length+" forrás"+(c.streams[0].note?" · "+c.streams[0].note:"")):"nincs adás a listában");
+    nm.appendChild(sub);
+    var mv=document.createElement("span");mv.className="mv";
+    var up=document.createElement("button"),dn=document.createElement("button");
+    up.type=dn.type="button";up.textContent="▲";dn.textContent="▼";up.tabIndex=dn.tabIndex=-1;up.title="Feljebb";dn.title="Lejjebb";
+    up.onclick=function(ev){ev.stopPropagation();move(i,-1)};dn.onclick=function(ev){ev.stopPropagation();move(i,1)};
+    mv.appendChild(up);mv.appendChild(dn);
+    li.appendChild(n);li.appendChild(img);li.appendChild(nm);li.appendChild(mv);
+    li.onclick=function(){play(c.key)};
+    ul.appendChild(li);
+  });
+  if(typeof focusRow==="number"&&zone==="drawer"){fi.drawer=3+focusRow}
+  applyFocus();
+}
+
+/* ---------- fókusz és zónák ---------- */
+var zone="none"; // none | bar | menu | drawer
+var fi={bar:1,menu:0,drawer:0};
+function items(z){
+  if(z==="bar")return ["bPrev","bPlay","bNext","bMute","bSet","bFull"].map($);
+  if(z==="menu")return ["mList","mSource","mSave","mData"].map($);
+  if(z==="drawer")return [$("dSave"),$("dReset"),$("dClose2")].concat([].slice.call($("list").children));
+  return [];
+}
+function applyFocus(){
+  [].slice.call(document.querySelectorAll(".focus")).forEach(function(e){e.classList.remove("focus")});
+  if(zone==="none"||(zone==="bar"&&fi.bar<0))return;
+  var it=items(zone);fi[zone]=Math.max(0,Math.min(it.length-1,fi[zone]));
+  var el=it[fi[zone]];if(!el)return;
+  el.classList.add("focus");
+  if(zone==="drawer"&&el.scrollIntoView)el.scrollIntoView({block:"nearest"});
+}
+var hideT=null,stage=$("stage");
+function schedule(){
+  clearTimeout(hideT);
+  if(zone==="drawer")return;
+  hideT=setTimeout(hideUI,zone==="menu"?10000:5000);
+}
+function wake(){
+  stage.classList.add("show");
+  if(zone==="none"){zone="bar";fi.bar=-1;applyFocus()}
+  schedule();
+}
+var peekT=null;
+function peek(){
+  stage.classList.add("peek");clearTimeout(peekT);
+  peekT=setTimeout(function(){stage.classList.remove("peek")},3500);
+}
+function hideUI(){
+  if(zone==="drawer")return;
+  $("menu").classList.remove("on");stage.classList.remove("show");zone="none";applyFocus();clearTimeout(hideT);
+}
+function openMenu(){
+  $("menu").classList.add("on");zone="menu";fi.menu=0;applyFocus();updateInfo();schedule();
+}
+function closeMenu(){$("menu").classList.remove("on");zone="bar";fi.bar=4;applyFocus();schedule()}
+function openDrawer(){
+  $("menu").classList.remove("on");$("drawer").classList.add("on");zone="drawer";
+  var i=order.indexOf(playingKey);fi.drawer=3+(i>-1?i:0);applyFocus();clearTimeout(hideT);
+}
+function closeDrawer(){
+  grabbed=-1;renderList();$("drawer").classList.remove("on");zone="bar";fi.bar=-1;applyFocus();schedule();
+}
+
+/* ---------- gombok (egér, érintés, OK) ---------- */
+$("bPrev").onclick=function(){zap(-1)};
+$("bNext").onclick=function(){zap(1)};
+$("bPlay").onclick=togglePlay;
+$("bMute").onclick=function(){vid.muted=!vid.muted;applyVol()};
+$("bSet").onclick=function(){if($("menu").classList.contains("on"))closeMenu();else openMenu()};
+$("bFull").onclick=fullscreen;
+$("mList").onclick=openDrawer;
+$("mSource").onclick=nextSource;
+$("mSave").onclick=save;
+$("mData").onclick=function(){openDlg()};
+$("dSave").onclick=save;
+$("dReset").onclick=resetOrder;
+$("dClose2").onclick=closeDrawer;
+
+function openDlg(){var d=$("dlg");$("ta").value="";if(d.showModal)d.showModal();else d.setAttribute("open","")}
+function closeDlg(){var d=$("dlg");if(d.close)d.close();else d.removeAttribute("open")}
+$("dClose").onclick=closeDlg;
+$("dM3u").onclick=function(){
+  try{var t=$("ta").value;loadText(t,"beillesztett lista");store(LS_M3U,t);closeDlg()}catch(e){status("Hibás lista: "+e.message)}
+};
+$("dFile").onchange=function(ev){
+  var f=ev.target.files[0];if(!f)return;var r=new FileReader();
+  r.onload=function(){try{loadText(r.result,"fájl");store(LS_M3U,r.result);closeDlg()}catch(e){status("Hibás fájl: "+e.message)}};
+  r.readAsText(f);
+};
+$("dExport").onclick=function(){$("ta").value=JSON.stringify(order);$("ta").select()};
+$("dImport").onclick=function(){
+  try{var a=JSON.parse($("ta").value);if(!Array.isArray(a))throw 0;store(LS_ORDER,JSON.stringify(a));applyOrder();setDirty(false);renderList(0);updateInfo();status("Sorrend betöltve.");closeDlg()}
+  catch(e){status("A sorrend kódja hibás.")}
+};
+
+stage.addEventListener("mousemove",function(){if(zone==="none"){stage.classList.add("show");zone="bar";fi.bar=-1;applyFocus()}schedule()});
+stage.addEventListener("click",function(e){
+  enterFS();
+  if(e.target===vid||e.target===stage||e.target.id==="idle"){
+    if(zone==="none"){wake()}else if(zone==="bar"||zone==="menu"){if($("menu").classList.contains("on"))closeMenu();else togglePlay()}
+  }
+});
+
+/* ---------- távirányító ---------- */
+function isBack(e){var k=e.key,c=e.keyCode;return k==="Escape"||k==="Backspace"||k==="GoBack"||c===10009||c===461}
+document.addEventListener("keydown",function(e){
+  if($("dlg").open)return;
+  var k=e.key,c=e.keyCode;
+  if(!isBack(e))enterFS();   // bármely gombnyomásra teljes képernyő
+
+  // csatornaváltó gombok mindig működnek
+  if(k==="PageUp"||k==="ChannelUp"||c===427){zap(-1);wake();e.preventDefault();return}
+  if(k==="PageDown"||k==="ChannelDown"||c===428){zap(1);wake();e.preventDefault();return}
+  if(k==="MediaPlayPause"||c===179||c===415||c===19){togglePlay();wake();e.preventDefault();return}
+  if(c===404||k==="s"||k==="S"){if(zone!=="none"){save();wake();e.preventDefault();return}} // zöld gomb: mentés
+
+  // rejtett állapotban a ◀ ▶ csatornát vált, bármely más gomb előhozza a vezérlőket
+  if(zone==="none"){
+    if(k==="ArrowRight"||k==="ArrowLeft"){zap(k==="ArrowRight"?1:-1);peek();e.preventDefault();return}
+    if(isBack(e))return;
+    wake();e.preventDefault();return;
+  }
+  schedule();
+
+  if(zone==="bar"){
+    if(fi.bar<0){
+      // vezérlősáv látszik, de egyik gomb sincs kijelölve: ◀ ▶ csatornát vált
+      if(k==="ArrowRight"){zap(1)}
+      else if(k==="ArrowLeft"){zap(-1)}
+      else if(k==="ArrowUp"||k==="ArrowDown"){fi.bar=1;applyFocus()}
+      else if(k==="Enter"){togglePlay()}
+      else if(isBack(e)){hideUI()}
+      else return;
+      e.preventDefault();return;
+    }
+    var onMute=(fi.bar===3);
+    if(k==="ArrowRight"){fi.bar=Math.min(5,fi.bar+1);applyFocus()}
+    else if(k==="ArrowLeft"){fi.bar=Math.max(0,fi.bar-1);applyFocus()}
+    else if(k==="ArrowUp"){if(onMute)changeVol(.1);else if(fi.bar===4)openMenu()}
+    else if(k==="ArrowDown"){if(onMute)changeVol(-.1);else{fi.bar=-1;applyFocus()}}
+    else if(k==="Enter"){items("bar")[fi.bar].click()}
+    else if(isBack(e)){fi.bar=-1;applyFocus()}
+    else return;
+    e.preventDefault();return;
+  }
+  if(zone==="menu"){
+    if(k==="ArrowDown"){fi.menu=Math.min(3,fi.menu+1);applyFocus()}
+    else if(k==="ArrowUp"){fi.menu=Math.max(0,fi.menu-1);applyFocus()}
+    else if(k==="Enter"){items("menu")[fi.menu].click()}
+    else if(k==="ArrowLeft"||k==="ArrowRight"||isBack(e)){closeMenu()}
+    else return;
+    e.preventDefault();return;
+  }
+  if(zone==="drawer"){
+    var it=items("drawer"),isRow=fi.drawer>=3,ri=fi.drawer-3;
+    if(k==="ArrowDown"){if(grabbed>-1&&isRow)move(ri,1);else{fi.drawer=Math.min(it.length-1,fi.drawer+1);applyFocus()}}
+    else if(k==="ArrowUp"){if(grabbed>-1&&isRow)move(ri,-1);else{fi.drawer=Math.max(0,fi.drawer-1);applyFocus()}}
+    else if(k==="Enter"){
+      if(grabbed>-1){grabbed=-1;renderList();status("Letéve. Ne felejts el menteni.")}
+      else it[fi.drawer].click();
+    }
+    else if(k==="ArrowRight"||c===405||k==="r"||k==="R"){
+      if(isRow){
+        if(grabbed>-1){grabbed=-1;status("Letéve. Ne felejts el menteni.")}
+        else{grabbed=ri;status("Mozgasd ▲▼-gal, OK-val leteheted.")}
+        renderList();
+      }
+    }
+    else if(k==="ArrowLeft"||isBack(e)){
+      if(grabbed>-1){grabbed=-1;renderList();status("Letéve. Ne felejts el menteni.")}
+      else closeDrawer();
+    }
+    else return;
+    e.preventDefault();return;
+  }
+});
+
+/* ---------- indulás ---------- */
+function loadText(t,from){
+  var e=parse(t);if(!e.length)throw new Error("üres lista");
+  buildChannels(e);applyOrder();
+  var found=channels.filter(function(c){return c.streams.length}).length;
+  status(found+"/"+WANTED.length+" csatornához van adás ("+from+").");
+  renderList();updateInfo();
+}
+function fetchTimeout(u,ms){
+  return new Promise(function(res,rej){
+    var t=setTimeout(function(){rej(new Error("időtúllépés"))},ms);
+    fetch(u,{cache:"no-store"}).then(function(r){clearTimeout(t);if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(res,function(e){clearTimeout(t);rej(e)});
+  });
+}
+function boot(){
+  [].slice.call(document.querySelectorAll("[data-i]")).forEach(function(el){setIcon(el,el.getAttribute("data-i"))});
+  channels=WANTED.map(function(w){return {name:w,key:w,logo:"",streams:[]}});
+  applyOrder();applyVol();setDirty(false);renderList();updateInfo();
+  var i=0;
+  (function next(){
+    if(i>=SOURCES.length){
+      var cached=store(LS_M3U);
+      if(cached){try{loadText(cached,"mentett példány");return}catch(e){}}
+      status("Az iptv-org lista nem érhető el. Beállítások > Lista betöltése / import.");return;
+    }
+    fetchTimeout(SOURCES[i++],15000).then(function(t){store(LS_M3U,t);loadText(t,"iptv-org")}).catch(next);
+  })();
+}
+window.addEventListener("beforeunload",stopPlayer);
+boot();
+})();
+</script>
+</body>
+</html>
